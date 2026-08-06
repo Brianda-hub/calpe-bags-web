@@ -1,0 +1,9 @@
+{
+  "name": "calpe-bags-web",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Landing page + checkout de Calpe Bags",
+  "dependencies": {
+    "stripe": "^17.4.0"
+  }
+}

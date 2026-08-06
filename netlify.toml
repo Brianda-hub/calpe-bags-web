@@ -1,0 +1,13 @@
+[build]
+  publish = "."
+  functions = "netlify/functions"
+
+[functions]
+  node_bundler = "esbuild"
+
+# Redirige cualquier ruta desconocida a index.html (no imprescindible aquí,
+# pero evita errores 404 si en el futuro añades más páginas/enlaces)
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 404

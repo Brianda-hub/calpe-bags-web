@@ -111,6 +111,10 @@
   .field input:focus{outline:none;border-color:var(--azul);}
   .ayuda-horario{font-size:0.78rem;color:var(--gris);margin:-8px 0 18px;}
   .field input:invalid{border-color:var(--coral);}
+  .aviso-horario-error{
+    font-size:0.82rem;color:#b3261e;background:#fdecea;border:1px solid #f5c6c2;
+    border-radius:8px;padding:10px 14px;margin:-8px 0 18px;font-weight:700;
+  }
 
   .stepper{display:flex;align-items:center;border:1.5px solid #e3e9ed;border-radius:10px;overflow:hidden;}
   .stepper button{
@@ -305,6 +309,7 @@
         </div>
       </div>
       <p class="ayuda-horario" data-i18n="ayuda_horario">Horario: L-V 9:00-19:00 · S-D 9:00-18:00</p>
+      <p id="avisoHorario" class="aviso-horario-error" style="display:none;"></p>
 
       <div class="field-row">
         <div class="field" style="flex:2;min-width:200px;">
@@ -453,6 +458,9 @@
       field_fecha_salida: "Fecha de salida",
       field_hora_salida: "Hora de salida",
       ayuda_horario: "Horario: L-V 9:00-19:00 · S-D 9:00-18:00",
+      aviso_fuera_horario: "Esa hora está fuera de nuestro horario de apertura ese día.",
+      aviso_hora_pasada: "La hora de entrada ya ha pasado. Elige una hora futura.",
+      aviso_salida_antes_entrada: "La hora de salida debe ser posterior a la de entrada.",
       field_nombre: "Tu nombre",
       placeholder_nombre: "Nombre y apellido",
       res_dias: "Días",
@@ -510,6 +518,9 @@
       field_fecha_salida: "Pick-up date",
       field_hora_salida: "Pick-up time",
       ayuda_horario: "Hours: Mon-Fri 9:00-19:00 · Sat-Sun 9:00-18:00",
+      aviso_fuera_horario: "That time is outside our opening hours for that day.",
+      aviso_hora_pasada: "The drop-off time has already passed. Please choose a future time.",
+      aviso_salida_antes_entrada: "The pick-up time must be after the drop-off time.",
       field_nombre: "Your name",
       placeholder_nombre: "Full name",
       res_dias: "Days",
@@ -566,6 +577,7 @@
       btnReservar.textContent = I18N[lang].btn_reservar_enabled;
     }
     actualizarResumen();
+    actualizarAvisoHorario();
   }
 
   const ITEMS = {}; // { mochila: {price, qty, label}, ... } se rellena abajo
@@ -593,6 +605,95 @@
     if (horaInput.value > lim.max) horaInput.value = lim.max;
   }
 
+  function horaAMinutos(horaStr) {
+    const [h, m] = horaStr.split(":").map(Number);
+    return h * 60 + m;
+  }
+
+  function pad2(n) { return String(n).padStart(2, "0"); }
+  function fechaAISO(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; }
+  function minutosAHora(mins) { return `${pad2(Math.floor(mins / 60))}:${pad2(mins % 60)}`; }
+
+  // Comprueba que la hora de entrada/salida esté dentro del horario de apertura,
+  // que la entrada no sea una hora ya pasada, y que la salida sea posterior a la entrada.
+  // Se llama en cada cambio de fecha/hora y justo antes de pagar, para no permitir
+  // reservas fuera de horario o con la hora de entrada ya pasada.
+  function validarHorarios() {
+    const fechaE = fechaEntradaInput.value;
+    const horaE = horaEntradaInput.value;
+    const fechaS = fechaSalidaInput.value;
+    const horaS = horaSalidaInput.value;
+    if (!fechaE || !horaE || !fechaS || !horaS) return { valido: false, motivo: null };
+
+    const limE = limitesHora(fechaE);
+    const limS = limitesHora(fechaS);
+    const minE = horaAMinutos(horaE);
+    const minS = horaAMinutos(horaS);
+
+    if (minE < horaAMinutos(limE.min) || minE > horaAMinutos(limE.max)) {
+      return { valido: false, motivo: "fuera_horario" };
+    }
+    if (minS < horaAMinutos(limS.min) || minS > horaAMinutos(limS.max)) {
+      return { valido: false, motivo: "fuera_horario" };
+    }
+
+    const entradaDT = new Date(`${fechaE}T${horaE}:00`);
+    const salidaDT = new Date(`${fechaS}T${horaS}:00`);
+    const ahora = new Date();
+
+    if (entradaDT.getTime() < ahora.getTime()) {
+      return { valido: false, motivo: "hora_pasada" };
+    }
+    if (salidaDT.getTime() <= entradaDT.getTime()) {
+      return { valido: false, motivo: "salida_antes_entrada" };
+    }
+
+    return { valido: true, motivo: null };
+  }
+
+  function actualizarAvisoHorario() {
+    const resultado = validarHorarios();
+    const aviso = document.getElementById("avisoHorario");
+    if (!resultado.valido && resultado.motivo) {
+      aviso.textContent = I18N[currentLang]["aviso_" + resultado.motivo];
+      aviso.style.display = "block";
+    } else {
+      aviso.style.display = "none";
+    }
+    return resultado.valido;
+  }
+
+  // Calcula unos valores iniciales sensatos según la hora actual, para no proponer
+  // por defecto una hora de entrada ya pasada o fuera de horario.
+  function calcularDefaultsIniciales() {
+    const ahora = new Date();
+    let fechaE = new Date(ahora);
+    const limHoy = limitesHora(fechaAISO(fechaE));
+    const minAhora = ahora.getHours() * 60 + ahora.getMinutes();
+    const minApertura = horaAMinutos(limHoy.min);
+    const minCierre = horaAMinutos(limHoy.max);
+
+    let horaEntradaDefault;
+    if (minAhora < minApertura) {
+      horaEntradaDefault = limHoy.min;
+    } else if (minAhora > minCierre - 30) {
+      // Ya cerrado o quedan menos de 30 min: pasamos al día siguiente
+      fechaE.setDate(fechaE.getDate() + 1);
+      horaEntradaDefault = limitesHora(fechaAISO(fechaE)).min;
+    } else {
+      const redondeado = Math.ceil(minAhora / 15) * 15;
+      horaEntradaDefault = minutosAHora(Math.min(redondeado, minCierre));
+    }
+
+    const fechaEntradaDefault = fechaAISO(fechaE);
+    const fechaS = new Date(fechaE);
+    fechaS.setDate(fechaS.getDate() + 1);
+    const fechaSalidaDefault = fechaAISO(fechaS);
+    const horaSalidaDefault = limitesHora(fechaSalidaDefault).max;
+
+    return { fechaEntradaDefault, horaEntradaDefault, fechaSalidaDefault, horaSalidaDefault };
+  }
+
   itemRows.forEach(row => {
     const key = row.dataset.key;
     const price = parseFloat(row.dataset.price);
@@ -614,17 +715,18 @@
     });
   });
 
-  // fechas por defecto: hoy y mañana
-  const hoy = new Date();
-  const manana = new Date(hoy);
-  manana.setDate(manana.getDate() + 1);
-  const hoyStr = hoy.toISOString().split("T")[0];
-  const mananaStr = manana.toISOString().split("T")[0];
+  // fechas y horas por defecto: calculadas según el momento actual, para no
+  // proponer de entrada una hora ya pasada o fuera del horario de apertura
+  const hoyStr = fechaAISO(new Date());
+  const defaults = calcularDefaultsIniciales();
 
-  fechaEntradaInput.value = hoyStr;
+  fechaEntradaInput.value = defaults.fechaEntradaDefault;
   fechaEntradaInput.min = hoyStr;
-  fechaSalidaInput.value = mananaStr;
-  fechaSalidaInput.min = hoyStr;
+  horaEntradaInput.value = defaults.horaEntradaDefault;
+
+  fechaSalidaInput.value = defaults.fechaSalidaDefault;
+  fechaSalidaInput.min = defaults.fechaEntradaDefault;
+  horaSalidaInput.value = defaults.horaSalidaDefault;
 
   ajustarHora(fechaEntradaInput, horaEntradaInput);
   ajustarHora(fechaSalidaInput, horaSalidaInput);
@@ -636,13 +738,21 @@
     fechaSalidaInput.min = fechaEntradaInput.value;
     ajustarHora(fechaEntradaInput, horaEntradaInput);
     actualizarResumen();
+    actualizarAvisoHorario();
   });
-  horaEntradaInput.addEventListener("change", actualizarResumen);
+  horaEntradaInput.addEventListener("change", () => {
+    actualizarResumen();
+    actualizarAvisoHorario();
+  });
   fechaSalidaInput.addEventListener("change", () => {
     ajustarHora(fechaSalidaInput, horaSalidaInput);
     actualizarResumen();
+    actualizarAvisoHorario();
   });
-  horaSalidaInput.addEventListener("change", actualizarResumen);
+  horaSalidaInput.addEventListener("change", () => {
+    actualizarResumen();
+    actualizarAvisoHorario();
+  });
 
   function formatearFecha(d) {
     const locale = currentLang === "en" ? "en-GB" : "es-ES";
@@ -701,6 +811,12 @@
     btnReservar.textContent = I18N[currentLang].btn_reservar_enabled;
 
     btnReservar.addEventListener("click", async () => {
+      const horarioValido = actualizarAvisoHorario();
+      if (!horarioValido) {
+        document.getElementById("avisoHorario").scrollIntoView({ behavior: "smooth", block: "center" });
+        return;
+      }
+
       const cart = Object.entries(ITEMS)
         .filter(([, v]) => v.qty > 0)
         .map(([key, v]) => ({
@@ -744,6 +860,7 @@
   });
 
   actualizarResumen();
+  actualizarAvisoHorario();
 </script>
 
 </body>

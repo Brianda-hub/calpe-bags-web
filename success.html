@@ -45,15 +45,20 @@
     <p>Gracias por confiar en Calpe Bags. Te hemos enviado la confirmación del pago por email desde Stripe.</p>
     <p>Trae tu equipaje el día de entrada dentro del horario indicado. Si tienes cualquier duda, escríbenos por WhatsApp al +34 634 015 890.</p>
     <div class="ref" id="refBox" style="display:none;">
-      Referencia de pago: <span id="sessionId"></span>
+      Nº de reserva: <span id="sessionId"></span>
     </div>
     <a class="btn" href="/">Volver al inicio</a>
   </div>
   <script>
+    // Mostramos solo los últimos 8 caracteres del ID de sesión de Stripe, en
+    // mayúsculas, a modo de código de reserva corto y fácil de leer/anotar.
+    // El ID completo (necesario para buscar el pago en el panel de Stripe)
+    // sigue estando disponible ahí si se necesita, a partir de este fragmento.
     const params = new URLSearchParams(window.location.search);
     const sid = params.get("session_id");
     if (sid) {
-      document.getElementById("sessionId").textContent = sid;
+      const codigoCorto = sid.slice(-8).toUpperCase();
+      document.getElementById("sessionId").textContent = codigoCorto;
       document.getElementById("refBox").style.display = "block";
     }
   </script>

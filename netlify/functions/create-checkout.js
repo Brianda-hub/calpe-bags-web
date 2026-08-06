@@ -11,12 +11,17 @@
 const Stripe = require("stripe");
 
 exports.handler = async (event) => {
+  console.log("create-checkout: petición recibida, método =", event.httpMethod);
+
   // Solo aceptamos peticiones POST desde la web
   if (event.httpMethod !== "POST") {
     return { statusCode: 405, body: "Method Not Allowed" };
   }
 
+  console.log("create-checkout: ¿STRIPE_SECRET_KEY presente? =", !!process.env.STRIPE_SECRET_KEY);
+
   if (!process.env.STRIPE_SECRET_KEY) {
+    console.error("create-checkout: falta la variable de entorno STRIPE_SECRET_KEY");
     return {
       statusCode: 500,
       body: JSON.stringify({ error: "Falta configurar STRIPE_SECRET_KEY en Netlify." })
@@ -26,10 +31,12 @@ exports.handler = async (event) => {
   const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
 
   try {
+    console.log("create-checkout: body recibido =", event.body);
     const { cart, dias, nombre } = JSON.parse(event.body || "{}");
 
     // Validación básica del carrito recibido
     if (!Array.isArray(cart) || cart.length === 0) {
+      console.error("create-checkout: carrito vacío o inválido");
       return { statusCode: 400, body: JSON.stringify({ error: "El carrito está vacío." }) };
     }
     const diasValidos = Number.isInteger(dias) && dias > 0 ? dias : 1;
@@ -69,11 +76,13 @@ exports.handler = async (event) => {
       }
     });
 
+    console.log("create-checkout: sesión creada correctamente, url =", session.url);
     return {
       statusCode: 200,
       body: JSON.stringify({ url: session.url })
     };
   } catch (err) {
+    console.error("create-checkout: error al crear la sesión =", err.message, err.stack);
     return {
       statusCode: 500,
       body: JSON.stringify({ error: err.message || "Error al crear la sesión de pago." })
